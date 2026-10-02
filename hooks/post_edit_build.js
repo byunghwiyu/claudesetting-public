@@ -7,6 +7,9 @@ const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+// PostToolUse에서 종료 코드 2만 stderr를 Claude에 전달한다. 이미 수행한 편집은 되돌리지 않는다.
+const FEEDBACK_EXIT = 2;
+
 // 파일로부터 위로 탐색해 가장 가까운 .csproj 위치 반환
 function selectCsproj(dir, files) {
   if (files.length === 1) return files[0];
@@ -60,7 +63,7 @@ try {
 } catch (error) {
   if (error.code === "AMBIGUOUS_CSPROJ") {
     console.error(`[Hook] 프로젝트 탐색 실패: ${error.message}`);
-    process.exit(1);
+    process.exit(FEEDBACK_EXIT);
   }
   console.log(`[Hook] 프로젝트 탐색 실패로 빌드 건너뜀: ${error.message}`);
   process.exit(0);
@@ -87,7 +90,7 @@ try {
 } catch (e) {
   console.error(`[Hook] 빌드 ${e.code === "ENOENT" ? "미실행: dotnet을 찾을 수 없음" : "실패"}`);
   console.error((e.stdout?.toString() || "") + (e.stderr?.toString() || "") || e.message);
-  process.exit(1);
+  process.exit(FEEDBACK_EXIT);
 }
 
 // 2. 수정 파일만 검증한다. 포맷 오류와 도구 오류 모두 자동 수정하지 않는다.
@@ -103,5 +106,5 @@ try {
 } catch (error) {
   console.error("[Hook] 포맷 검사 실패 — 자동 교정하지 않았습니다. 위반 또는 도구 오류를 확인하세요.");
   console.error((error.stdout?.toString() || "") + (error.stderr?.toString() || "") || error.message);
-  process.exit(1);
+  process.exit(FEEDBACK_EXIT);
 }
