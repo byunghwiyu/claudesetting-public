@@ -63,6 +63,17 @@ try {
   check('{broken', 2);
   fs.writeFileSync(policyPath, '{broken');
   check({ tool_name: 'Bash', tool_input: { command: 'git status' } }, 2);
+  // 손상·빈 정책은 정상 명령도 통과시키지 않는다.
+  const invalidPolicies = [
+    { patterns: [] },
+    { patterns: [{ id: 'bad-regex', tools: ['Bash'], command_regex: '(' }] },
+    { patterns: [{ id: 'no-tools', command_regex: 'x' }] },
+    { patterns: [{ id: 'no-regex', tools: ['Bash'] }] },
+  ];
+  for (const invalid of invalidPolicies) {
+    fs.writeFileSync(policyPath, JSON.stringify(invalid));
+    check({ tool_name: 'Bash', tool_input: { command: 'git status' } }, 2);
+  }
   for (const name of ['settings.macos.json', 'settings.windows.json']) {
     const settings = JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'));
     const entry = settings.hooks.PreToolUse.find(e => e.hooks.some(h => h.command.includes('validate-deny.js')));

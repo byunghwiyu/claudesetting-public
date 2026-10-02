@@ -30,7 +30,21 @@ const content = ti.content ?? ti.new_string ?? "";
 let patterns;
 try {
   patterns = JSON.parse(fs.readFileSync(PATTERNS_FILE, "utf-8")).patterns;
-  if (!Array.isArray(patterns)) throw new Error("patterns 배열이 없습니다.");
+  if (!Array.isArray(patterns) || patterns.length === 0) throw new Error("patterns 배열이 없거나 비어 있습니다.");
+  // 필수 필드와 정규식을 미리 검증·컴파일해 잘못된 정책이 조용히 통과하지 않게 한다.
+  patterns = patterns.map((p, index) => {
+    const label = typeof p?.id === "string" ? p.id : `#${index}`;
+    if (typeof p?.id !== "string" || !Array.isArray(p.tools) || p.tools.length === 0) {
+      throw new Error(`필수 필드(id, tools) 누락: ${label}`);
+    }
+    if (!p.command_regex && !p.content_regex) throw new Error(`검사 정규식 없음: ${label}`);
+    const compile = (source) => (source ? new RegExp(source, p.flags || "") : null);
+    try {
+      return { ...p, pathRe: compile(p.path_regex), commandRe: compile(p.command_regex), contentRe: compile(p.content_regex) };
+    } catch (error) {
+      throw new Error(`정규식 오류: ${label} — ${error.message}`);
+    }
+  });
 } catch (error) {
   console.error(`[Deny] 정책 로드 실패 — 안전을 위해 도구 실행을 차단합니다: ${error.message}`);
   process.exit(2);
@@ -39,18 +53,17 @@ try {
 for (const p of patterns) {
   if (!p.tools.includes(toolName)) continue;
 
-  if (p.path_regex && !new RegExp(p.path_regex, p.flags || "").test(filePath)) continue;
+  if (p.pathRe && !p.pathRe.test(filePath)) continue;
 
-  const flags = p.flags || "";
   let matched = false;
-  if (p.command_regex && command) {
-    if (new RegExp(p.command_regex, flags).test(command)) matched = true;
+  if (p.commandRe && command) {
+    if (p.commandRe.test(command)) matched = true;
   }
-  if (!matched && p.content_regex) {
+  if (!matched && p.contentRe) {
     // 셸 도구(Bash/PowerShell)는 tool_input에 content가 없고 command만 있다.
     // 이전 구현은 PowerShell일 때 빈 content를 검사해 content_regex 전용 패턴이 무력화됐다.
     const haystack = [command, content].filter(Boolean).join("\n");
-    if (haystack && new RegExp(p.content_regex, flags).test(haystack)) matched = true;
+    if (haystack && p.contentRe.test(haystack)) matched = true;
   }
 
   if (matched) {
