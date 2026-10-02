@@ -16,23 +16,30 @@ function selectCsproj(dir, files) {
 
   const directoryProject = `${path.basename(dir)}.csproj`;
   if (files.includes(directoryProject)) return directoryProject;
-  if (files.includes("Assembly-CSharp.csproj")) return "Assembly-CSharp.csproj";
+  for (const unityProject of ["Assembly-CSharp.csproj", "Assembly-CSharp-Editor.csproj"]) {
+    if (files.includes(unityProject)) return unityProject;
+  }
 
   const error = new Error(`여러 프로젝트 중 대상을 결정할 수 없음: ${files.join(", ")}`);
   error.code = "AMBIGUOUS_CSPROJ";
   throw error;
 }
 
-function findCsproj(startDir) {
+// stopDir(작업 폴더)가 있으면 그 위로는 올라가지 않는다.
+function findCsproj(startDir, filePath, stopDir) {
   let dir = startDir;
   while (true) {
-    const files = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".csproj") && !f.includes("Editor"))
-      .sort();
-    if (files.length > 0) return { dir, csproj: selectCsproj(dir, files) };
+    const all = fs.readdirSync(dir).filter((f) => f.endsWith(".csproj")).sort();
+    if (all.length > 0) {
+      const editor = all.filter((f) => f.includes("Editor"));
+      const runtime = all.filter((f) => !f.includes("Editor"));
+      // Unity 규칙: Editor 폴더 안의 파일은 Editor 프로젝트, 그 외는 런타임 프로젝트를 우선한다.
+      const inEditorFolder = path.relative(dir, filePath).split(path.sep).includes("Editor");
+      const candidates = inEditorFolder && editor.length > 0 ? editor : runtime.length > 0 ? runtime : editor;
+      return { dir, csproj: selectCsproj(dir, candidates) };
+    }
     const parent = path.dirname(dir);
-    if (parent === dir) return null; // 루트까지 탐색 실패
+    if (parent === dir || (stopDir && path.relative(dir, stopDir) === "")) return null; // 루트 또는 작업 폴더까지 탐색 실패
     dir = parent;
   }
 }
@@ -53,13 +60,17 @@ const inputPath = data?.tool_input?.file_path ?? "";
 if (typeof inputPath !== "string" || !inputPath.toLowerCase().endsWith(".cs")) {
   process.exit(0);
 }
-const filePath = path.resolve(data.cwd || process.cwd(), inputPath);
+const workspaceDir = path.resolve(data.cwd || process.cwd());
+const filePath = path.resolve(workspaceDir, inputPath);
+// 작업 폴더 안의 파일이면 작업 폴더 밖 상위 프로젝트를 고르지 않는다.
+const relativeToWorkspace = path.relative(workspaceDir, filePath);
+const insideWorkspace = !relativeToWorkspace.startsWith("..") && !path.isAbsolute(relativeToWorkspace);
 
 // 수정 파일 기준으로 .csproj 탐색
 const startDir = path.dirname(filePath);
 let found;
 try {
-  found = findCsproj(startDir);
+  found = findCsproj(startDir, filePath, insideWorkspace ? workspaceDir : null);
 } catch (error) {
   if (error.code === "AMBIGUOUS_CSPROJ") {
     console.error(`[Hook] 프로젝트 탐색 실패: ${error.message}`);
