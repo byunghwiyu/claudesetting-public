@@ -24,7 +24,8 @@ try {
 const toolName = input?.tool_name;
 const ti = input?.tool_input ?? {};
 const command = ti.command ?? "";
-const filePath = ti.file_path ?? "";
+// 경로 검사에서 Windows 구분자도 정책의 슬래시와 동일하게 취급한다.
+const filePath = (ti.file_path ?? "").replace(/\\/g, "/");
 const content = ti.content ?? ti.new_string ?? "";
 
 let patterns;

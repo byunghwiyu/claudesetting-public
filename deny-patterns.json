@@ -76,7 +76,7 @@
         "Write",
         "Edit"
       ],
-      "content_regex": "(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,})",
+      "content_regex": "(sk-proj-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,})",
       "reason": "API 키/토큰 출력·커밋 금지."
     },
     {

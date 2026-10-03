@@ -60,6 +60,53 @@ try {
   for (const tool of ['Bash', 'PowerShell', 'Write', 'Edit']) {
     check({ tool_name: tool, tool_input: { command: 'git status', file_path: 'example.txt', content: 'hello' } }, 0);
   }
+  // 실제 비밀 값 대신 최소 길이의 합성 토큰을 사용한다. 문서도 비밀정보 검사를 유지한다.
+  const tokenCases = [
+    ['sk-proj-' + 'Ab9_-'.repeat(4), 2],
+    ['github_pat_' + 'Ab9_'.repeat(7) + 'A1', 2],
+    ['sk-proj-' + 'a'.repeat(19), 0],
+    ['github_pat_' + 'a'.repeat(29), 0],
+    ['process.env.OPENAI_API_KEY', 0],
+    ['$env:GITHUB_TOKEN', 0],
+    ['os.getenv("OPENAI_API_KEY")', 0],
+    ['sk-proj-…', 0],
+    ['github_pat_…', 0],
+    ['task-name', 0],
+  ];
+  for (const tool of ['Bash', 'PowerShell', 'Write', 'Edit']) {
+    for (const [text, status] of tokenCases) {
+      const input = ['Bash', 'PowerShell'].includes(tool)
+        ? { command: text }
+        : { file_path: 'docs/example.md', [tool === 'Edit' ? 'new_string' : 'content']: text };
+      check({ tool_name: tool, tool_input: input }, status, status === 2 ? 'api-key-leak' : undefined);
+    }
+  }
+  // 구분자가 달라도 테스트·마이그레이션 경로의 차단과 정상 내용 허용은 같아야 한다.
+  const testPaths = [
+    'test/example.js', 'test\\example.js',
+    'tests/example.js', 'tests\\example.js',
+    '__tests__/example.js', '__tests__\\example.js',
+    'C:/작업 폴더/tests/example.js', 'C:\\작업 폴더\\tests\\example.js',
+  ];
+  const migrationPaths = [
+    'migration/example.txt', 'migration\\example.txt',
+    'migrations/example.txt', 'migrations\\example.txt',
+  ];
+  for (const tool of ['Write', 'Edit']) {
+    const field = tool === 'Edit' ? 'new_string' : 'content';
+    for (const filePath of testPaths) {
+      check({ tool_name: tool, tool_input: { file_path: filePath, [field]: 'process.env.PROD' } }, 2, 'process-env-prod-in-tests');
+      check({ tool_name: tool, tool_input: { file_path: filePath, [field]: 'process.env.DEV' } }, 0);
+    }
+    for (const filePath of ['src/example.js', 'src\\example.js']) {
+      check({ tool_name: tool, tool_input: { file_path: filePath, [field]: 'process.env.PROD' } }, 0);
+    }
+    for (const filePath of migrationPaths) {
+      const sql = examples.find(([id]) => id === 'drop-table-code')[1];
+      check({ tool_name: tool, tool_input: { file_path: filePath, [field]: sql } }, 2, 'drop-table-code');
+      check({ tool_name: tool, tool_input: { file_path: filePath, [field]: 'SELECT 1;' } }, 0);
+    }
+  }
   check('{broken', 2);
   fs.writeFileSync(policyPath, '{broken');
   check({ tool_name: 'Bash', tool_input: { command: 'git status' } }, 2);
